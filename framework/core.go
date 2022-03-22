@@ -1,33 +1,38 @@
 package framework
 
 import (
-	"log"
 	"net/http"
 )
 
 // Core represent core struct
 type Core struct {
-	router map[string]ControllerHandler
+	Router
 }
 
 func NewCore() *Core {
-	return &Core{router: map[string]ControllerHandler{}}
+	return &Core{
+		Router: NewDynamicRouter(),
+	}
 }
 
-func (c *Core) Get(url string, handler ControllerHandler) {
-	c.router[url] = handler
-}
+func (c *Core) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	// 封装自定义 Context
+	ctx := NewContext(request, writer)
 
-func (c *Core) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	log.Println("core.serveHTTP")
-	ctx := NewContext(request, response)
-
-	// 一个简单的路由选择器，这里直接写死为测试路由foo
-	router := c.router["foo"]
-	if router == nil {
+	// 寻找路由
+	handler := c.FindRouteByRequest(request)
+	if handler == nil {
+		_ = ctx.Json(http.StatusNotFound, "not found")
 		return
 	}
-	log.Println("core.router")
 
-	router(ctx)
+	// 调用处理器
+	if err := handler(ctx); err != nil {
+		_ = ctx.Json(http.StatusInternalServerError, "inner error")
+		return
+	}
+}
+
+func (c *Core) RouteGroup(prefix string) RouteGroup {
+	return newSimpleRouteGroup(prefix, c)
 }
